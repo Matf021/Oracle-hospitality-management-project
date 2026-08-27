@@ -329,6 +329,8 @@ BEGIN
 END;
 /
 
+COMMIT;
+
 SELECT
     hr.reservation_id,
     g.first_name,
