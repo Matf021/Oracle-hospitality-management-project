@@ -421,13 +421,44 @@ BEGIN
         p_folio_id       => lv_folio_id
     );
 
-    DBMS_OUTPUT.PUT_LINE(
-        'Stay ID: ' || lv_stay_id
-    );
+    DBMS_OUTPUT.PUT_LINE('Stay ID: ' || lv_stay_id);
+    DBMS_OUTPUT.PUT_LINE('Folio ID: ' || lv_folio_id);
 
-    DBMS_OUTPUT.PUT_LINE(
-        'Folio ID: ' || lv_folio_id
-    );
+    COMMIT;
 
+END;
+/
+
+SELECT *
+FROM stay;
+
+SELECT *
+FROM guest_folio;
+
+SELECT
+    room_id,
+    room_number,
+    operational_status
+FROM room
+ORDER BY room_id;
+
+SELECT reservation_id,
+       reservation_status
+FROM hotel_reservation;
+
+BEGIN
+    stay_folio_management_pkg.post_room_charges(1);
+END;
+/
+
+SELECT *
+FROM folio_charge;
+
+SELECT stay_folio_management_pkg.get_folio_balance(1)
+       AS outstanding_balance
+FROM dual;
+
+BEGIN
+    stay_folio_management_pkg.checkout_reservation(1);
 END;
 /
