@@ -494,3 +494,5 @@ VALUES (
     'Selection of cheeses with seasonal accompaniments.',
     24.00
 );
+
+COMMIT;
