@@ -448,6 +448,7 @@ FROM hotel_reservation;
 
 BEGIN
     stay_folio_management_pkg.post_room_charges(1);
+    COMMIT;
 END;
 /
 
