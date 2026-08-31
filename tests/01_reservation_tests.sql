@@ -1,51 +1,35 @@
-SET SERVEROUTPUT ON;
+   SET SERVEROUTPUT ON;
 
-DECLARE
-    lv_passed NUMBER := 0;
-    lv_failed NUMBER := 0;
+declare
+   lv_passed         number := 0;
+   lv_failed         number := 0;
+   lv_reservation_id number;
 
-    PROCEDURE print_result (
-        p_test_name IN VARCHAR2,
-        p_passed    IN BOOLEAN,
-        p_message   IN VARCHAR2 DEFAULT NULL
-    )
-    IS
-    BEGIN
+   procedure print_result (
+      p_test_name in varchar2,
+      p_passed    in boolean,
+      p_message   in varchar2 default null
+   ) is
+   begin
+      if p_passed then
+         lv_passed := lv_passed + 1;
+         dbms_output.put_line('[PASS] ' || p_test_name);
+      else
+         lv_failed := lv_failed + 1;
+         dbms_output.put_line('[FAIL] '
+                              || p_test_name ||
+            case
+               when p_message is not null then
+                  ' - ' || p_message
+            end
+         );
 
-        IF p_passed THEN
+      end if;
+   end print_result;
 
-            lv_passed := lv_passed + 1;
-
-            DBMS_OUTPUT.PUT_LINE(
-                '[PASS] ' || p_test_name
-            );
-
-        ELSE
-
-            lv_failed := lv_failed + 1;
-
-            DBMS_OUTPUT.PUT_LINE(
-                '[FAIL] ' || p_test_name
-                || CASE
-                       WHEN p_message IS NOT NULL
-                       THEN ' - ' || p_message
-                   END
-            );
-
-        END IF;
-
-    END print_result;
-
-
-    lv_reservation_id NUMBER;
-
-BEGIN
-
-    DBMS_OUTPUT.PUT_LINE(
-        '=== RESERVATION MANAGEMENT TESTS ==='
-    );
-
-    DBMS_OUTPUT.PUT_LINE('');
+begin
+   dbms_output.put_line('=== RESERVATION MANAGEMENT TESTS ===');
+   dbms_output.put_line('');
 
 
     -- =====================================================
@@ -54,35 +38,31 @@ BEGIN
     -- Expected: -20001
     -- =====================================================
 
-    BEGIN
+   begin
+      reservation_management_pkg.create_reservation(
+         p_guest_id       => 999999,
+         p_check_in_date  => date '2027-01-10',
+         p_check_out_date => date '2027-01-12',
+         p_total_guests   => 1,
+         p_reservation_id => lv_reservation_id
+      );
 
-        reservation_management_pkg.create_reservation(
-            p_guest_id       => 999999,
-            p_check_in_date  => DATE '2027-01-10',
-            p_check_out_date => DATE '2027-01-12',
-            p_total_guests   => 1,
-            p_reservation_id => lv_reservation_id
-        );
-
-        print_result(
+      print_result(
+         'Reject nonexistent guest',
+         false,
+         'No exception was raised.'
+      );
+   exception
+      when others then
+         print_result(
             'Reject nonexistent guest',
-            FALSE,
-            'No exception was raised.'
-        );
-
-
-    EXCEPTION
-
-        WHEN OTHERS THEN
-
-            print_result(
-                'Reject nonexistent guest',
-                SQLCODE = -20001,
-                'Expected -20001, received '
-                || SQLCODE || ': ' || SQLERRM
-            );
-
-    END;
+            sqlcode = -20001,
+            'Expected -20001, received '
+            || sqlcode
+            || ': '
+            || sqlerrm
+         );
+   end;
 
 
 
@@ -92,36 +72,32 @@ BEGIN
     -- Expected: -20004
     -- =====================================================
 
-    BEGIN
+   begin
+      reservation_management_pkg.create_reservation(
+         p_guest_id       => 1,
+         p_check_in_date  => date '2027-01-15',
+         p_check_out_date => date '2027-01-10',
+         p_total_guests   => 1,
+         p_reservation_id => lv_reservation_id
+      );
 
-        reservation_management_pkg.create_reservation(
-            p_guest_id       => 1,
-            p_check_in_date  => DATE '2027-01-15',
-            p_check_out_date => DATE '2027-01-10',
-            p_total_guests   => 1,
-            p_reservation_id => lv_reservation_id
-        );
 
-
-        print_result(
+      print_result(
+         'Reject invalid date range',
+         false,
+         'No exception was raised.'
+      );
+   exception
+      when others then
+         print_result(
             'Reject invalid date range',
-            FALSE,
-            'No exception was raised.'
-        );
-
-
-    EXCEPTION
-
-        WHEN OTHERS THEN
-
-            print_result(
-                'Reject invalid date range',
-                SQLCODE = -20004,
-                'Expected -20004, received '
-                || SQLCODE || ': ' || SQLERRM
-            );
-
-    END;
+            sqlcode = -20004,
+            'Expected -20004, received '
+            || sqlcode
+            || ': '
+            || sqlerrm
+         );
+   end;
 
 
 
@@ -131,36 +107,32 @@ BEGIN
     -- Expected: -20005
     -- =====================================================
 
-    BEGIN
+   begin
+      reservation_management_pkg.create_reservation(
+         p_guest_id       => 1,
+         p_check_in_date  => date '2027-01-10',
+         p_check_out_date => date '2027-01-12',
+         p_total_guests   => 0,
+         p_reservation_id => lv_reservation_id
+      );
 
-        reservation_management_pkg.create_reservation(
-            p_guest_id       => 1,
-            p_check_in_date  => DATE '2027-01-10',
-            p_check_out_date => DATE '2027-01-12',
-            p_total_guests   => 0,
-            p_reservation_id => lv_reservation_id
-        );
 
-
-        print_result(
+      print_result(
+         'Reject zero guests',
+         false,
+         'No exception was raised.'
+      );
+   exception
+      when others then
+         print_result(
             'Reject zero guests',
-            FALSE,
-            'No exception was raised.'
-        );
-
-
-    EXCEPTION
-
-        WHEN OTHERS THEN
-
-            print_result(
-                'Reject zero guests',
-                SQLCODE = -20005,
-                'Expected -20005, received '
-                || SQLCODE || ': ' || SQLERRM
-            );
-
-    END;
+            sqlcode = -20005,
+            'Expected -20005, received '
+            || sqlcode
+            || ': '
+            || sqlerrm
+         );
+   end;
 
 
 
@@ -170,35 +142,31 @@ BEGIN
     -- Expected: -20006
     -- =====================================================
 
-    BEGIN
+   begin
+      reservation_management_pkg.add_room_to_reservation(
+         p_reservation_id => 999999,
+         p_room_id        => 1,
+         p_nightly_rate   => 220,
+         p_occupants      => 1
+      );
 
-        reservation_management_pkg.add_room_to_reservation(
-            p_reservation_id => 999999,
-            p_room_id        => 1,
-            p_nightly_rate   => 220,
-            p_occupants      => 1
-        );
 
-
-        print_result(
+      print_result(
+         'Reject nonexistent reservation',
+         false,
+         'No exception was raised.'
+      );
+   exception
+      when others then
+         print_result(
             'Reject nonexistent reservation',
-            FALSE,
-            'No exception was raised.'
-        );
-
-
-    EXCEPTION
-
-        WHEN OTHERS THEN
-
-            print_result(
-                'Reject nonexistent reservation',
-                SQLCODE = -20006,
-                'Expected -20006, received '
-                || SQLCODE || ': ' || SQLERRM
-            );
-
-    END;
+            sqlcode = -20006,
+            'Expected -20006, received '
+            || sqlcode
+            || ': '
+            || sqlerrm
+         );
+   end;
 
 
 
@@ -208,46 +176,42 @@ BEGIN
     -- Expected: -20008
     -- =====================================================
 
-    BEGIN
-
-        reservation_management_pkg.create_reservation(
-            p_guest_id       => 1,
-            p_check_in_date  => DATE '2027-02-01',
-            p_check_out_date => DATE '2027-02-03',
-            p_total_guests   => 1,
-            p_reservation_id => lv_reservation_id
-        );
-
-
-        reservation_management_pkg.add_room_to_reservation(
-            p_reservation_id => lv_reservation_id,
-            p_room_id        => 999999,
-            p_nightly_rate   => 220,
-            p_occupants      => 1
-        );
+   begin
+      reservation_management_pkg.create_reservation(
+         p_guest_id       => 1,
+         p_check_in_date  => date '2027-02-01',
+         p_check_out_date => date '2027-02-03',
+         p_total_guests   => 1,
+         p_reservation_id => lv_reservation_id
+      );
 
 
-        print_result(
+      reservation_management_pkg.add_room_to_reservation(
+         p_reservation_id => lv_reservation_id,
+         p_room_id        => 999999,
+         p_nightly_rate   => 220,
+         p_occupants      => 1
+      );
+
+
+      print_result(
+         'Reject nonexistent room',
+         false,
+         'No exception was raised.'
+      );
+   exception
+      when others then
+         print_result(
             'Reject nonexistent room',
-            FALSE,
-            'No exception was raised.'
-        );
+            sqlcode = -20008,
+            'Expected -20008, received '
+            || sqlcode
+            || ': '
+            || sqlerrm
+         );
 
-
-    EXCEPTION
-
-        WHEN OTHERS THEN
-
-            print_result(
-                'Reject nonexistent room',
-                SQLCODE = -20008,
-                'Expected -20008, received '
-                || SQLCODE || ': ' || SQLERRM
-            );
-
-            ROLLBACK;
-
-    END;
+         rollback;
+   end;
 
 
 
@@ -258,68 +222,299 @@ BEGIN
     -- Expected: -20011
     -- =====================================================
 
-    BEGIN
-
-        reservation_management_pkg.create_reservation(
-            p_guest_id       => 1,
-            p_check_in_date  => DATE '2027-03-01',
-            p_check_out_date => DATE '2027-03-03',
-            p_total_guests   => 3,
-            p_reservation_id => lv_reservation_id
-        );
-
-
-        reservation_management_pkg.add_room_to_reservation(
-            p_reservation_id => lv_reservation_id,
-            p_room_id        => 1,
-            p_nightly_rate   => 220,
-            p_occupants      => 3
-        );
+   begin
+      reservation_management_pkg.create_reservation(
+         p_guest_id       => 1,
+         p_check_in_date  => date '2027-03-01',
+         p_check_out_date => date '2027-03-03',
+         p_total_guests   => 3,
+         p_reservation_id => lv_reservation_id
+      );
 
 
-        print_result(
+      reservation_management_pkg.add_room_to_reservation(
+         p_reservation_id => lv_reservation_id,
+         p_room_id        => 1,
+         p_nightly_rate   => 220,
+         p_occupants      => 3
+      );
+
+
+      print_result(
+         'Reject excessive room occupancy',
+         false,
+         'No exception was raised.'
+      );
+   exception
+      when others then
+         print_result(
             'Reject excessive room occupancy',
-            FALSE,
-            'No exception was raised.'
-        );
+            sqlcode = -20011,
+            'Expected -20011, received '
+            || sqlcode
+            || ': '
+            || sqlerrm
+         );
+
+         rollback;
+   end;
+
+    -- =====================================================
+-- TEST 7
+-- Duplicate room assignment
+-- Expected: -20013
+-- =====================================================
+
+   begin
+      reservation_management_pkg.create_reservation(
+         p_guest_id       => 1,
+         p_check_in_date  => date '2027-04-01',
+         p_check_out_date => date '2027-04-03',
+         p_total_guests   => 2,
+         p_reservation_id => lv_reservation_id
+      );
+
+      reservation_management_pkg.add_room_to_reservation(
+         p_reservation_id => lv_reservation_id,
+         p_room_id        => 1,
+         p_nightly_rate   => 220,
+         p_occupants      => 2
+      );
+
+      reservation_management_pkg.add_room_to_reservation(
+         p_reservation_id => lv_reservation_id,
+         p_room_id        => 1,
+         p_nightly_rate   => 220,
+         p_occupants      => 2
+      );
+
+      print_result(
+         'Reject duplicate room assignment',
+         false,
+         'No exception was raised.'
+      );
+   exception
+      when others then
+         print_result(
+            'Reject duplicate room assignment',
+            sqlcode = -20013,
+            'Expected -20013, received '
+            || sqlcode
+            || ': '
+            || sqlerrm
+         );
+
+         rollback;
+   end;
+
+-- =====================================================
+-- TEST 8
+-- Double-book same room for overlapping dates
+-- Expected: -20014
+-- =====================================================
+
+   declare
+      lv_reservation_1 number;
+      lv_reservation_2 number;
+   begin
+
+    -- First reservation
+      reservation_management_pkg.create_reservation(
+         p_guest_id       => 1,
+         p_check_in_date  => date '2027-05-10',
+         p_check_out_date => date '2027-05-15',
+         p_total_guests   => 2,
+         p_reservation_id => lv_reservation_1
+      );
+
+      reservation_management_pkg.add_room_to_reservation(
+         p_reservation_id => lv_reservation_1,
+         p_room_id        => 1,
+         p_nightly_rate   => 220,
+         p_occupants      => 2
+      );
 
 
-    EXCEPTION
+    -- Overlapping reservation
+      reservation_management_pkg.create_reservation(
+         p_guest_id       => 2,
+         p_check_in_date  => date '2027-05-12',
+         p_check_out_date => date '2027-05-14',
+         p_total_guests   => 1,
+         p_reservation_id => lv_reservation_2
+      );
 
-        WHEN OTHERS THEN
-
-            print_result(
-                'Reject excessive room occupancy',
-                SQLCODE = -20011,
-                'Expected -20011, received '
-                || SQLCODE || ': ' || SQLERRM
-            );
-
-            ROLLBACK;
-
-    END;
-
-
-
-    DBMS_OUTPUT.PUT_LINE('');
-    DBMS_OUTPUT.PUT_LINE(
-        '=============================='
-    );
-
-    DBMS_OUTPUT.PUT_LINE(
-        'PASSED: ' || lv_passed
-    );
-
-    DBMS_OUTPUT.PUT_LINE(
-        'FAILED: ' || lv_failed
-    );
-
-    DBMS_OUTPUT.PUT_LINE(
-        '=============================='
-    );
+      reservation_management_pkg.add_room_to_reservation(
+         p_reservation_id => lv_reservation_2,
+         p_room_id        => 1,
+         p_nightly_rate   => 220,
+         p_occupants      => 1
+      );
 
 
-    ROLLBACK;
+      print_result(
+         'Reject overlapping room reservation',
+         false,
+         'No exception was raised.'
+      );
+   exception
+      when others then
+         print_result(
+            'Reject overlapping room reservation',
+            sqlcode = -20014,
+            'Expected -20014, received '
+            || sqlcode
+            || ': '
+            || sqlerrm
+         );
 
-END;
+         rollback;
+   end;
+
+-- =====================================================
+-- TEST 9
+-- Assigned occupants do not match reservation total
+-- Expected: -20016
+-- =====================================================
+
+   begin
+      reservation_management_pkg.create_reservation(
+         p_guest_id       => 1,
+         p_check_in_date  => date '2027-06-01',
+         p_check_out_date => date '2027-06-03',
+         p_total_guests   => 3,
+         p_reservation_id => lv_reservation_id
+      );
+
+      reservation_management_pkg.add_room_to_reservation(
+         p_reservation_id => lv_reservation_id,
+         p_room_id        => 1,
+         p_nightly_rate   => 220,
+         p_occupants      => 2
+      );
+
+
+      reservation_management_pkg.validate_guest_count(lv_reservation_id);
+      print_result(
+         'Reject guest-count mismatch',
+         false,
+         'No exception was raised.'
+      );
+   exception
+      when others then
+         print_result(
+            'Reject guest-count mismatch',
+            sqlcode = -20016,
+            'Expected -20016, received '
+            || sqlcode
+            || ': '
+            || sqlerrm
+         );
+
+         rollback;
+   end;
+
+-- =====================================================
+-- TEST 10
+-- Maintenance room cannot be assigned
+-- Expected: -20009
+-- =====================================================
+
+   begin
+      update room
+         set
+         operational_status = 'MAINTENANCE'
+       where room_id = 1;
+
+
+      reservation_management_pkg.create_reservation(
+         p_guest_id       => 1,
+         p_check_in_date  => date '2027-07-01',
+         p_check_out_date => date '2027-07-03',
+         p_total_guests   => 1,
+         p_reservation_id => lv_reservation_id
+      );
+
+
+      reservation_management_pkg.add_room_to_reservation(
+         p_reservation_id => lv_reservation_id,
+         p_room_id        => 1,
+         p_nightly_rate   => 220,
+         p_occupants      => 1
+      );
+
+
+      print_result(
+         'Reject maintenance room',
+         false,
+         'No exception was raised.'
+      );
+   exception
+      when others then
+         print_result(
+            'Reject maintenance room',
+            sqlcode = -20009,
+            'Expected -20009, received '
+            || sqlcode
+            || ': '
+            || sqlerrm
+         );
+
+         rollback;
+   end;
+
+-- =====================================================
+-- TEST 11
+-- Valid reservation and room assignment
+-- Expected: success
+-- =====================================================
+
+   declare
+      lv_test_reservation number;
+   begin
+      reservation_management_pkg.create_reservation(
+         p_guest_id       => 1,
+         p_check_in_date  => date '2027-08-01',
+         p_check_out_date => date '2027-08-03',
+         p_total_guests   => 2,
+         p_reservation_id => lv_test_reservation
+      );
+
+
+      reservation_management_pkg.add_room_to_reservation(
+         p_reservation_id => lv_test_reservation,
+         p_room_id        => 1,
+         p_nightly_rate   => 220,
+         p_occupants      => 2
+      );
+
+
+      reservation_management_pkg.validate_guest_count(lv_test_reservation);
+      print_result(
+         'Create valid reservation',
+         true
+      );
+      rollback;
+   exception
+      when others then
+         print_result(
+            'Create valid reservation',
+            false,
+            'Unexpected error '
+            || sqlcode
+            || ': '
+            || sqlerrm
+         );
+         rollback;
+   end;
+
+
+
+   dbms_output.put_line('');
+   dbms_output.put_line('==============================');
+   dbms_output.put_line('PASSED: ' || lv_passed);
+   dbms_output.put_line('FAILED: ' || lv_failed);
+   dbms_output.put_line('==============================');
+   rollback;
+end;
 /
