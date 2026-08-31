@@ -1,64 +1,60 @@
-CREATE OR REPLACE PACKAGE stay_folio_management_pkg AS
-
-    FUNCTION calculate_room_charges (
-        p_reservation_id IN NUMBER
-    ) RETURN NUMBER;
-
-
-    FUNCTION get_folio_balance (
-        p_folio_id IN NUMBER
-    ) RETURN NUMBER;
+create or replace package stay_folio_management_pkg as
+   function calculate_room_charges (
+      p_reservation_id in number
+   ) return number;
 
 
-    PROCEDURE check_in_reservation (
-        p_reservation_id IN NUMBER,
-        p_stay_id        OUT NUMBER,
-        p_folio_id       OUT NUMBER
-    );
+   function get_folio_balance (
+      p_folio_id in number
+   ) return number;
 
 
-    PROCEDURE post_room_charges (
-        p_reservation_id IN NUMBER
-    );
+   procedure check_in_reservation (
+      p_reservation_id in number,
+      p_stay_id        out number,
+      p_folio_id       out number
+   );
 
 
-    PROCEDURE checkout_reservation (
-        p_reservation_id IN NUMBER
-    );
+   procedure post_room_charges (
+      p_reservation_id in number
+   );
 
-END stay_folio_management_pkg;
+
+   procedure checkout_reservation (
+      p_reservation_id in number
+   );
+
+end stay_folio_management_pkg;
 /
 
-CREATE OR REPLACE PACKAGE BODY stay_folio_management_pkg AS
+create or replace package body stay_folio_management_pkg as
 
 
     -- =====================================================
     -- FUNCTION: calculate_room_charges
     -- =====================================================
 
-    FUNCTION calculate_room_charges (
-        p_reservation_id IN NUMBER
-    ) RETURN NUMBER
-    IS
-        lv_total NUMBER(10,2);
-    BEGIN
+   function calculate_room_charges (
+      p_reservation_id in number
+   ) return number is
+      lv_total number(
+         10,
+         2
+      );
+   begin
+      select nvl(
+         sum(rr.nightly_rate *(hr.check_out_date - hr.check_in_date)),
+         0
+      )
+        into lv_total
+        from hotel_reservation hr
+        join reservation_room rr
+      on rr.reservation_id = hr.reservation_id
+       where hr.reservation_id = p_reservation_id;
 
-        SELECT NVL(
-                   SUM(
-                       rr.nightly_rate *
-                       (hr.check_out_date - hr.check_in_date)
-                   ),
-                   0
-               )
-        INTO lv_total
-        FROM hotel_reservation hr
-        JOIN reservation_room rr
-            ON rr.reservation_id = hr.reservation_id
-        WHERE hr.reservation_id = p_reservation_id;
-
-        RETURN lv_total;
-
-    END calculate_room_charges;
+      return lv_total;
+   end calculate_room_charges;
 
 
 
@@ -66,30 +62,39 @@ CREATE OR REPLACE PACKAGE BODY stay_folio_management_pkg AS
     -- FUNCTION: get_folio_balance
     -- =====================================================
 
-    FUNCTION get_folio_balance (
-        p_folio_id IN NUMBER
-    ) RETURN NUMBER
-    IS
-        lv_charges  NUMBER(10,2);
-        lv_payments NUMBER(10,2);
-    BEGIN
+   function get_folio_balance (
+      p_folio_id in number
+   ) return number is
+      lv_charges  number(
+         10,
+         2
+      );
+      lv_payments number(
+         10,
+         2
+      );
+   begin
+      select nvl(
+         sum(amount),
+         0
+      )
+        into lv_charges
+        from folio_charge
+       where folio_id = p_folio_id;
 
-        SELECT NVL(SUM(amount), 0)
-        INTO lv_charges
-        FROM folio_charge
-        WHERE folio_id = p_folio_id;
+
+      select nvl(
+         sum(amount),
+         0
+      )
+        into lv_payments
+        from payment
+       where folio_id = p_folio_id
+         and payment_status = 'COMPLETED';
 
 
-        SELECT NVL(SUM(amount), 0)
-        INTO lv_payments
-        FROM payment
-        WHERE folio_id = p_folio_id
-          AND payment_status = 'COMPLETED';
-
-
-        RETURN lv_charges - lv_payments;
-
-    END get_folio_balance;
+      return lv_charges - lv_payments;
+   end get_folio_balance;
 
 
 
@@ -97,122 +102,118 @@ CREATE OR REPLACE PACKAGE BODY stay_folio_management_pkg AS
     -- PROCEDURE: check_in_reservation
     -- =====================================================
 
-    PROCEDURE check_in_reservation (
-        p_reservation_id IN NUMBER,
-        p_stay_id        OUT NUMBER,
-        p_folio_id       OUT NUMBER
-    )
-    IS
-        lv_status      hotel_reservation.reservation_status%TYPE;
-        lv_room_count  NUMBER;
-        lv_stay_count  NUMBER;
-    BEGIN
+   procedure check_in_reservation (
+      p_reservation_id in number,
+      p_stay_id        out number,
+      p_folio_id       out number
+   ) is
+      lv_res_status    hotel_reservation.reservation_status%type;
+      lv_room_count    number;
+      lv_existing_stay number;
+   begin
 
-        -- Retrieve reservation status
-        SELECT reservation_status
-        INTO lv_status
-        FROM hotel_reservation
-        WHERE reservation_id = p_reservation_id
-        FOR UPDATE;
+    -- Validate reservation exists and lock it
+      begin
+         select reservation_status
+           into lv_res_status
+           from hotel_reservation
+          where reservation_id = p_reservation_id
+         for update;
 
-
-        IF lv_status != 'BOOKED' THEN
-            RAISE_APPLICATION_ERROR(
-                -20101,
-                'Only booked reservations can be checked in.'
+      exception
+         when no_data_found then
+            raise_application_error(
+               -20104,
+               'Reservation could not be found.'
             );
-        END IF;
+      end;
 
 
-        -- Make sure rooms were assigned
-        SELECT COUNT(*)
-        INTO lv_room_count
-        FROM reservation_room
-        WHERE reservation_id = p_reservation_id;
+    -- Check whether this reservation already has a stay
+      select count(*)
+        into lv_existing_stay
+        from stay
+       where reservation_id = p_reservation_id;
 
 
-        IF lv_room_count = 0 THEN
-            RAISE_APPLICATION_ERROR(
-                -20102,
-                'Reservation has no rooms assigned.'
-            );
-        END IF;
+      if lv_existing_stay > 0 then
+         raise_application_error(
+            -20103,
+            'Reservation has already been checked in.'
+         );
+      end if;
 
 
-        -- Validate room occupants against reservation total
-        reservation_management_pkg.validate_guest_count(
-            p_reservation_id
-        );
+    -- Reservation must still be BOOKED
+      if lv_res_status != 'BOOKED' then
+         raise_application_error(
+            -20101,
+            'Only booked reservations can be checked in.'
+         );
+      end if;
 
 
-        -- Make sure a stay does not already exist
-        SELECT COUNT(*)
-        INTO lv_stay_count
-        FROM stay
-        WHERE reservation_id = p_reservation_id;
+    -- Must have at least one room
+      select count(*)
+        into lv_room_count
+        from reservation_room
+       where reservation_id = p_reservation_id;
 
 
-        IF lv_stay_count > 0 THEN
-            RAISE_APPLICATION_ERROR(
-                -20103,
-                'A stay already exists for this reservation.'
-            );
-        END IF;
+      if lv_room_count = 0 then
+         raise_application_error(
+            -20102,
+            'Reservation must have at least one assigned room.'
+         );
+      end if;
 
 
-        -- Create stay
-        INSERT INTO stay (
-            reservation_id,
-            actual_check_in,
-            stay_status
-        )
-        VALUES (
-            p_reservation_id,
-            SYSTIMESTAMP,
-            'CHECKED_IN'
-        )
-        RETURNING stay_id
-        INTO p_stay_id;
+    -- Validate total occupants
+      reservation_management_pkg.validate_guest_count(p_reservation_id);
 
 
-        -- Open guest folio
-        INSERT INTO guest_folio (
-            stay_id,
-            folio_status
-        )
-        VALUES (
-            p_stay_id,
-            'OPEN'
-        )
-        RETURNING folio_id
-        INTO p_folio_id;
+    -- Create stay
+      insert into stay (
+         reservation_id,
+         actual_check_in,
+         stay_status
+      ) values
+         ( p_reservation_id,
+           systimestamp,
+           'CHECKED_IN' )
+      returning stay_id into p_stay_id;
 
 
-        -- Update reservation
-        UPDATE hotel_reservation
-        SET reservation_status = 'CHECKED_IN'
-        WHERE reservation_id = p_reservation_id;
+    -- Open folio
+      insert into guest_folio (
+         stay_id,
+         folio_status,
+         opened_at
+      ) values
+         ( p_stay_id,
+           'OPEN',
+           systimestamp )
+      returning folio_id into p_folio_id;
 
 
-        -- Mark all assigned rooms as occupied
-        UPDATE room
-        SET operational_status = 'OCCUPIED'
-        WHERE room_id IN (
-            SELECT room_id
-            FROM reservation_room
-            WHERE reservation_id = p_reservation_id
-        );
+    -- Update reservation
+      update hotel_reservation
+         set
+         reservation_status = 'CHECKED_IN'
+       where reservation_id = p_reservation_id;
 
 
-    EXCEPTION
+    -- Mark assigned rooms occupied
+      update room
+         set
+         operational_status = 'OCCUPIED'
+       where room_id in (
+         select room_id
+           from reservation_room
+          where reservation_id = p_reservation_id
+      );
 
-        WHEN NO_DATA_FOUND THEN
-            RAISE_APPLICATION_ERROR(
-                -20104,
-                'Reservation could not be found.'
-            );
-
-    END check_in_reservation;
+   end check_in_reservation;
 
 
 
@@ -220,79 +221,70 @@ CREATE OR REPLACE PACKAGE BODY stay_folio_management_pkg AS
     -- PROCEDURE: post_room_charges
     -- =====================================================
 
-    PROCEDURE post_room_charges (
-        p_reservation_id IN NUMBER
-    )
-    IS
-        lv_folio_id      NUMBER;
-        lv_room_charges  NUMBER(10,2);
-        lv_charge_count  NUMBER;
-    BEGIN
+   procedure post_room_charges (
+      p_reservation_id in number
+   ) is
+      lv_folio_id     number;
+      lv_room_charges number(
+         10,
+         2
+      );
+      lv_charge_count number;
+   begin
 
         -- Find active folio
-        SELECT gf.folio_id
-        INTO lv_folio_id
-        FROM guest_folio gf
-        JOIN stay s
-            ON s.stay_id = gf.stay_id
-        WHERE s.reservation_id = p_reservation_id
-          AND gf.folio_status = 'OPEN';
+      select gf.folio_id
+        into lv_folio_id
+        from guest_folio gf
+        join stay s
+      on s.stay_id = gf.stay_id
+       where s.reservation_id = p_reservation_id
+         and gf.folio_status = 'OPEN';
 
 
         -- Prevent room charges being posted twice
-        SELECT COUNT(*)
-        INTO lv_charge_count
-        FROM folio_charge
-        WHERE folio_id = lv_folio_id
-          AND charge_type = 'ROOM'
-          AND reference_id = p_reservation_id;
+      select count(*)
+        into lv_charge_count
+        from folio_charge
+       where folio_id = lv_folio_id
+         and charge_type = 'ROOM'
+         and reference_id = p_reservation_id;
 
 
-        IF lv_charge_count > 0 THEN
-            RAISE_APPLICATION_ERROR(
-                -20105,
-                'Room charges have already been posted.'
-            );
-        END IF;
+      if lv_charge_count > 0 then
+         raise_application_error(
+            -20105,
+            'Room charges have already been posted.'
+         );
+      end if;
+      lv_room_charges := calculate_room_charges(p_reservation_id);
+      if lv_room_charges <= 0 then
+         raise_application_error(
+            -20106,
+            'No room charges were calculated.'
+         );
+      end if;
+      insert into folio_charge (
+         folio_id,
+         charge_type,
+         description,
+         amount,
+         reference_id
+      ) values
+         ( lv_folio_id,
+           'ROOM',
+           'Accommodation charges',
+           lv_room_charges,
+           p_reservation_id );
 
 
-        lv_room_charges :=
-            calculate_room_charges(p_reservation_id);
-
-
-        IF lv_room_charges <= 0 THEN
-            RAISE_APPLICATION_ERROR(
-                -20106,
-                'No room charges were calculated.'
-            );
-        END IF;
-
-
-        INSERT INTO folio_charge (
-            folio_id,
-            charge_type,
-            description,
-            amount,
-            reference_id
-        )
-        VALUES (
-            lv_folio_id,
-            'ROOM',
-            'Accommodation charges',
-            lv_room_charges,
-            p_reservation_id
-        );
-
-
-    EXCEPTION
-
-        WHEN NO_DATA_FOUND THEN
-            RAISE_APPLICATION_ERROR(
-                -20107,
-                'Open folio could not be found.'
-            );
-
-    END post_room_charges;
+   exception
+      when no_data_found then
+         raise_application_error(
+            -20107,
+            'Open folio could not be found.'
+         );
+   end post_room_charges;
 
 
 
@@ -300,166 +292,161 @@ CREATE OR REPLACE PACKAGE BODY stay_folio_management_pkg AS
     -- PROCEDURE: checkout_reservation
     -- =====================================================
 
-    PROCEDURE checkout_reservation (
-        p_reservation_id IN NUMBER
-    )
-    IS
-        lv_stay_id       NUMBER;
-        lv_folio_id      NUMBER;
-        lv_status        hotel_reservation.reservation_status%TYPE;
-        lv_balance       NUMBER(10,2);
-        lv_charge_count  NUMBER;
-    BEGIN
+   procedure checkout_reservation (
+      p_reservation_id in number
+   ) is
+      lv_stay_id      number;
+      lv_folio_id     number;
+      lv_status       hotel_reservation.reservation_status%type;
+      lv_balance      number(
+         10,
+         2
+      );
+      lv_charge_count number;
+   begin
+      select s.stay_id,
+             gf.folio_id,
+             hr.reservation_status
+        into
+         lv_stay_id,
+         lv_folio_id,
+         lv_status
+        from hotel_reservation hr
+        join stay s
+      on s.reservation_id = hr.reservation_id
+        join guest_folio gf
+      on gf.stay_id = s.stay_id
+       where hr.reservation_id = p_reservation_id
+         and s.stay_status = 'CHECKED_IN'
+         and gf.folio_status = 'OPEN'
+      for update;
 
-        SELECT
-            s.stay_id,
-            gf.folio_id,
-            hr.reservation_status
-        INTO
-            lv_stay_id,
-            lv_folio_id,
-            lv_status
-        FROM hotel_reservation hr
-        JOIN stay s
-            ON s.reservation_id = hr.reservation_id
-        JOIN guest_folio gf
-            ON gf.stay_id = s.stay_id
-        WHERE hr.reservation_id = p_reservation_id
-          AND s.stay_status = 'CHECKED_IN'
-          AND gf.folio_status = 'OPEN'
-        FOR UPDATE;
 
-
-        IF lv_status != 'CHECKED_IN' THEN
-            RAISE_APPLICATION_ERROR(
-                -20108,
-                'Reservation is not currently checked in.'
-            );
-        END IF;
+      if lv_status != 'CHECKED_IN' then
+         raise_application_error(
+            -20108,
+            'Reservation is not currently checked in.'
+         );
+      end if;
 
 
         -- Check whether room charge already exists
-        SELECT COUNT(*)
-        INTO lv_charge_count
-        FROM folio_charge
-        WHERE folio_id = lv_folio_id
-          AND charge_type = 'ROOM'
-          AND reference_id = p_reservation_id;
+      select count(*)
+        into lv_charge_count
+        from folio_charge
+       where folio_id = lv_folio_id
+         and charge_type = 'ROOM'
+         and reference_id = p_reservation_id;
 
 
         -- Automatically post it if necessary
-        IF lv_charge_count = 0 THEN
-            post_room_charges(p_reservation_id);
-        END IF;
+      if lv_charge_count = 0 then
+         post_room_charges(p_reservation_id);
+      end if;
 
 
         -- Calculate outstanding balance
-        lv_balance := get_folio_balance(lv_folio_id);
-
-
-        IF lv_balance > 0 THEN
-            RAISE_APPLICATION_ERROR(
-                -20109,
-                'Outstanding folio balance: $'
-                || TO_CHAR(lv_balance, 'FM9999990.00')
-            );
-        END IF;
+      lv_balance := get_folio_balance(lv_folio_id);
+      if lv_balance > 0 then
+         raise_application_error(
+            -20109,
+            'Outstanding folio balance: $' || to_char(
+               lv_balance,
+               'FM9999990.00'
+            )
+         );
+      end if;
 
 
         -- Close stay
-        UPDATE stay
-        SET actual_check_out = SYSTIMESTAMP,
-            stay_status = 'CHECKED_OUT'
-        WHERE stay_id = lv_stay_id;
+      update stay
+         set actual_check_out = systimestamp,
+             stay_status = 'CHECKED_OUT'
+       where stay_id = lv_stay_id;
 
 
         -- Close folio
-        UPDATE guest_folio
-        SET folio_status = 'CLOSED',
-            closed_at = SYSTIMESTAMP
-        WHERE folio_id = lv_folio_id;
+      update guest_folio
+         set folio_status = 'CLOSED',
+             closed_at = systimestamp
+       where folio_id = lv_folio_id;
 
 
         -- Complete reservation
-        UPDATE hotel_reservation
-        SET reservation_status = 'COMPLETED'
-        WHERE reservation_id = p_reservation_id;
+      update hotel_reservation
+         set
+         reservation_status = 'COMPLETED'
+       where reservation_id = p_reservation_id;
 
 
         -- Rooms now require housekeeping
-        UPDATE room
-        SET operational_status = 'CLEANING'
-        WHERE room_id IN (
-            SELECT room_id
-            FROM reservation_room
-            WHERE reservation_id = p_reservation_id
-        );
+      update room
+         set
+         operational_status = 'CLEANING'
+       where room_id in (
+         select room_id
+           from reservation_room
+          where reservation_id = p_reservation_id
+      );
 
 
-    EXCEPTION
-
-        WHEN NO_DATA_FOUND THEN
-            RAISE_APPLICATION_ERROR(
-                -20110,
-                'Active stay or folio could not be found.'
-            );
-
-    END checkout_reservation;
+   exception
+      when no_data_found then
+         raise_application_error(
+            -20110,
+            'Active stay or folio could not be found.'
+         );
+   end checkout_reservation;
 
 
-END stay_folio_management_pkg;
+end stay_folio_management_pkg;
 /
 
-DECLARE
-    lv_stay_id  NUMBER;
-    lv_folio_id NUMBER;
-BEGIN
+declare
+   lv_stay_id  number;
+   lv_folio_id number;
+begin
+   stay_folio_management_pkg.check_in_reservation(
+      p_reservation_id => 1,
+      p_stay_id        => lv_stay_id,
+      p_folio_id       => lv_folio_id
+   );
 
-    stay_folio_management_pkg.check_in_reservation(
-        p_reservation_id => 1,
-        p_stay_id        => lv_stay_id,
-        p_folio_id       => lv_folio_id
-    );
-
-    DBMS_OUTPUT.PUT_LINE('Stay ID: ' || lv_stay_id);
-    DBMS_OUTPUT.PUT_LINE('Folio ID: ' || lv_folio_id);
-
-    COMMIT;
-
-END;
+   dbms_output.put_line('Stay ID: ' || lv_stay_id);
+   dbms_output.put_line('Folio ID: ' || lv_folio_id);
+   commit;
+end;
 /
 
-SELECT *
-FROM stay;
+select *
+  from stay;
 
-SELECT *
-FROM guest_folio;
+select *
+  from guest_folio;
 
-SELECT
-    room_id,
-    room_number,
-    operational_status
-FROM room
-ORDER BY room_id;
+select room_id,
+       room_number,
+       operational_status
+  from room
+ order by room_id;
 
-SELECT reservation_id,
+select reservation_id,
        reservation_status
-FROM hotel_reservation;
+  from hotel_reservation;
 
-BEGIN
-    stay_folio_management_pkg.post_room_charges(1);
-    COMMIT;
-END;
+begin
+   stay_folio_management_pkg.post_room_charges(1);
+   commit;
+end;
 /
 
-SELECT *
-FROM folio_charge;
+select *
+  from folio_charge;
 
-SELECT stay_folio_management_pkg.get_folio_balance(1)
-       AS outstanding_balance
-FROM dual;
+select stay_folio_management_pkg.get_folio_balance(1) as outstanding_balance
+  from dual;
 
-BEGIN
-    stay_folio_management_pkg.checkout_reservation(1);
-END;
+begin
+   stay_folio_management_pkg.checkout_reservation(1);
+end;
 /
