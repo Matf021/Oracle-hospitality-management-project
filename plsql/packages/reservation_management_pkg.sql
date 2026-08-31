@@ -45,8 +45,8 @@ CREATE OR REPLACE PACKAGE BODY reservation_management_pkg AS
     -- =====================================================
 
     FUNCTION is_room_available (
-        p_room_id        IN NUMBER,
-        p_check_in_date  IN DATE,
+        p_room_id       IN NUMBER,
+        p_check_in_date IN DATE,
         p_check_out_date IN DATE
     ) RETURN BOOLEAN
     IS
@@ -77,58 +77,96 @@ CREATE OR REPLACE PACKAGE BODY reservation_management_pkg AS
     -- =====================================================
 
     PROCEDURE create_reservation (
-        p_guest_id        IN NUMBER,
-        p_check_in_date   IN DATE,
-        p_check_out_date  IN DATE,
-        p_total_guests    IN NUMBER,
-        p_reservation_id  OUT NUMBER
+        p_guest_id       IN NUMBER,
+        p_check_in_date  IN DATE,
+        p_check_out_date IN DATE,
+        p_total_guests   IN NUMBER,
+        p_reservation_id OUT NUMBER
     )
     IS
-        lv_guest_count NUMBER;
+        lv_guest_anonymized guest.is_anonymized%TYPE;
     BEGIN
 
-        -- Validate guest exists and is not anonymized
-        SELECT COUNT(*)
-        INTO lv_guest_count
-        FROM guest
-        WHERE guest_id = p_guest_id
-          AND is_anonymized = 'N';
+        -- ---------------------------------------------
+        -- Validate guest
+        -- ---------------------------------------------
 
-        IF lv_guest_count = 0 THEN
+        BEGIN
+            SELECT is_anonymized
+            INTO lv_guest_anonymized
+            FROM guest
+            WHERE guest_id = p_guest_id;
+
+        EXCEPTION
+            WHEN NO_DATA_FOUND THEN
+                RAISE_APPLICATION_ERROR(
+                    -20001,
+                    'Guest could not be found.'
+                );
+        END;
+
+
+        IF lv_guest_anonymized = 'Y' THEN
             RAISE_APPLICATION_ERROR(
-                -20001,
-                'Guest does not exist or has been anonymized.'
+                -20002,
+                'Anonymized guests cannot create reservations.'
+            );
+        END IF;
+
+
+        -- ---------------------------------------------
+        -- Validate dates
+        -- ---------------------------------------------
+
+        IF p_check_in_date IS NULL
+           OR p_check_out_date IS NULL
+        THEN
+            RAISE_APPLICATION_ERROR(
+                -20003,
+                'Check-in and check-out dates are required.'
             );
         END IF;
 
 
         IF p_check_out_date <= p_check_in_date THEN
             RAISE_APPLICATION_ERROR(
-                -20002,
+                -20004,
                 'Check-out date must be after check-in date.'
             );
         END IF;
 
 
-        IF p_total_guests <= 0 THEN
+        -- ---------------------------------------------
+        -- Validate guest count
+        -- ---------------------------------------------
+
+        IF p_total_guests IS NULL
+           OR p_total_guests <= 0
+        THEN
             RAISE_APPLICATION_ERROR(
-                -20003,
-                'Reservation must include at least one guest.'
+                -20005,
+                'Total guests must be greater than zero.'
             );
         END IF;
 
+
+        -- ---------------------------------------------
+        -- Create reservation
+        -- ---------------------------------------------
 
         INSERT INTO hotel_reservation (
             guest_id,
             check_in_date,
             check_out_date,
-            total_guests
+            total_guests,
+            reservation_status
         )
         VALUES (
             p_guest_id,
             p_check_in_date,
             p_check_out_date,
-            p_total_guests
+            p_total_guests,
+            'BOOKED'
         )
         RETURNING reservation_id
         INTO p_reservation_id;
@@ -148,81 +186,160 @@ CREATE OR REPLACE PACKAGE BODY reservation_management_pkg AS
         p_occupants      IN NUMBER
     )
     IS
-        lv_check_in_date   DATE;
-        lv_check_out_date  DATE;
-        lv_max_occupancy   NUMBER;
-        lv_room_status     VARCHAR2(20);
+        lv_check_in_date      DATE;
+        lv_check_out_date     DATE;
+        lv_res_status         hotel_reservation.reservation_status%TYPE;
+
+        lv_max_occupancy      NUMBER;
+        lv_room_status        room.operational_status%TYPE;
+
+        lv_duplicate_count    NUMBER;
     BEGIN
 
-        -- Get reservation dates
-        SELECT check_in_date,
-               check_out_date
-        INTO lv_check_in_date,
-             lv_check_out_date
-        FROM hotel_reservation
-        WHERE reservation_id = p_reservation_id;
+        -- ---------------------------------------------
+        -- Validate reservation
+        -- ---------------------------------------------
+
+        BEGIN
+            SELECT
+                check_in_date,
+                check_out_date,
+                reservation_status
+            INTO
+                lv_check_in_date,
+                lv_check_out_date,
+                lv_res_status
+            FROM hotel_reservation
+            WHERE reservation_id = p_reservation_id;
+
+        EXCEPTION
+            WHEN NO_DATA_FOUND THEN
+                RAISE_APPLICATION_ERROR(
+                    -20006,
+                    'Reservation could not be found.'
+                );
+        END;
 
 
-        -- Get room information
-        SELECT rt.max_occupancy,
-               r.operational_status
-        INTO lv_max_occupancy,
-             lv_room_status
-        FROM room r
-        JOIN room_type rt
-            ON rt.room_type_id = r.room_type_id
-        WHERE r.room_id = p_room_id;
+        IF lv_res_status != 'BOOKED' THEN
+            RAISE_APPLICATION_ERROR(
+                -20007,
+                'Rooms can only be added to booked reservations.'
+            );
+        END IF;
 
 
-        -- Room cannot be used if out of service
+        -- ---------------------------------------------
+        -- Validate room
+        -- ---------------------------------------------
+
+        BEGIN
+            SELECT
+                rt.max_occupancy,
+                r.operational_status
+            INTO
+                lv_max_occupancy,
+                lv_room_status
+            FROM room r
+            JOIN room_type rt
+                ON rt.room_type_id = r.room_type_id
+            WHERE r.room_id = p_room_id;
+
+        EXCEPTION
+            WHEN NO_DATA_FOUND THEN
+                RAISE_APPLICATION_ERROR(
+                    -20008,
+                    'Room could not be found.'
+                );
+        END;
+
+
         IF lv_room_status IN (
             'MAINTENANCE',
             'OUT_OF_SERVICE'
         ) THEN
             RAISE_APPLICATION_ERROR(
-                -20004,
-                'Room is not currently available for booking.'
+                -20009,
+                'Room is not operationally available.'
             );
         END IF;
 
 
-        -- Validate occupancy
+        -- ---------------------------------------------
+        -- Validate occupants
+        -- ---------------------------------------------
+
+        IF p_occupants IS NULL
+           OR p_occupants <= 0
+        THEN
+            RAISE_APPLICATION_ERROR(
+                -20010,
+                'Occupants must be greater than zero.'
+            );
+        END IF;
+
+
         IF p_occupants > lv_max_occupancy THEN
             RAISE_APPLICATION_ERROR(
-                -20005,
-                'Occupancy exceeds room maximum.'
+                -20011,
+                'Occupants exceed room maximum occupancy of '
+                || lv_max_occupancy || '.'
             );
         END IF;
 
 
-        IF p_occupants <= 0 THEN
-            RAISE_APPLICATION_ERROR(
-                -20006,
-                'Room must contain at least one occupant.'
-            );
-        END IF;
+        -- ---------------------------------------------
+        -- Validate nightly rate
+        -- ---------------------------------------------
 
-
-        IF p_nightly_rate < 0 THEN
+        IF p_nightly_rate IS NULL
+           OR p_nightly_rate < 0
+        THEN
             RAISE_APPLICATION_ERROR(
-                -20007,
+                -20012,
                 'Nightly rate cannot be negative.'
             );
         END IF;
 
 
+        -- ---------------------------------------------
+        -- Prevent same room being attached twice
+        -- ---------------------------------------------
+
+        SELECT COUNT(*)
+        INTO lv_duplicate_count
+        FROM reservation_room
+        WHERE reservation_id = p_reservation_id
+          AND room_id = p_room_id;
+
+
+        IF lv_duplicate_count > 0 THEN
+            RAISE_APPLICATION_ERROR(
+                -20013,
+                'Room is already assigned to this reservation.'
+            );
+        END IF;
+
+
+        -- ---------------------------------------------
         -- Validate date availability
+        -- ---------------------------------------------
+
         IF NOT is_room_available(
             p_room_id,
             lv_check_in_date,
             lv_check_out_date
         ) THEN
             RAISE_APPLICATION_ERROR(
-                -20008,
-                'Room is already reserved for the requested dates.'
+                -20014,
+                'Room is not available for the requested dates.'
             );
         END IF;
 
+
+        -- ---------------------------------------------
+        -- Assign room
+        -- ---------------------------------------------
 
         INSERT INTO reservation_room (
             reservation_id,
@@ -237,13 +354,6 @@ CREATE OR REPLACE PACKAGE BODY reservation_management_pkg AS
             p_occupants
         );
 
-    EXCEPTION
-        WHEN NO_DATA_FOUND THEN
-            RAISE_APPLICATION_ERROR(
-                -20009,
-                'Reservation or room could not be found.'
-            );
-
     END add_room_to_reservation;
 
 
@@ -256,35 +366,45 @@ CREATE OR REPLACE PACKAGE BODY reservation_management_pkg AS
         p_reservation_id IN NUMBER
     )
     IS
-        lv_total_guests      NUMBER;
-        lv_total_occupants   NUMBER;
+        lv_total_guests       NUMBER;
+        lv_assigned_occupants NUMBER;
     BEGIN
 
-        SELECT total_guests
-        INTO lv_total_guests
-        FROM hotel_reservation
-        WHERE reservation_id = p_reservation_id;
+        -- ---------------------------------------------
+        -- Validate reservation
+        -- ---------------------------------------------
+
+        BEGIN
+            SELECT total_guests
+            INTO lv_total_guests
+            FROM hotel_reservation
+            WHERE reservation_id = p_reservation_id;
+
+        EXCEPTION
+            WHEN NO_DATA_FOUND THEN
+                RAISE_APPLICATION_ERROR(
+                    -20015,
+                    'Reservation could not be found.'
+                );
+        END;
 
 
         SELECT NVL(SUM(occupants), 0)
-        INTO lv_total_occupants
+        INTO lv_assigned_occupants
         FROM reservation_room
         WHERE reservation_id = p_reservation_id;
 
 
-        IF lv_total_guests != lv_total_occupants THEN
+        IF lv_assigned_occupants != lv_total_guests THEN
             RAISE_APPLICATION_ERROR(
-                -20010,
-                'Reservation guest count does not match room occupancy.'
+                -20016,
+                'Assigned occupants ('
+                || lv_assigned_occupants
+                || ') do not match reservation guest count ('
+                || lv_total_guests
+                || ').'
             );
         END IF;
-
-    EXCEPTION
-        WHEN NO_DATA_FOUND THEN
-            RAISE_APPLICATION_ERROR(
-                -20011,
-                'Reservation could not be found.'
-            );
 
     END validate_guest_count;
 
