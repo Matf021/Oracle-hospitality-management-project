@@ -354,6 +354,13 @@ CREATE OR REPLACE PACKAGE BODY restaurant_order_management_pkg AS
         WHERE order_id = p_order_id
         FOR UPDATE;
 
+        IF lv_order_status = 'VOID' THEN
+        RAISE_APPLICATION_ERROR(
+            -20321,
+            'Void restaurant orders cannot be posted to a folio.'
+        );
+        END IF;
+
 
         IF lv_payment_destination != 'ROOM_CHARGE' THEN
             RAISE_APPLICATION_ERROR(
