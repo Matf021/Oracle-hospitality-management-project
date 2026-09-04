@@ -4,6 +4,9 @@ DECLARE
     lv_passed NUMBER := 0;
     lv_failed NUMBER := 0;
 
+    lv_test_guest_id NUMBER;
+    lv_test_room_id  NUMBER;
+
     PROCEDURE print_result (
         p_test_name IN VARCHAR2,
         p_passed    IN BOOLEAN,
@@ -27,6 +30,18 @@ DECLARE
     END print_result;
 
 BEGIN
+
+    -- Resolve test data using stable business identifiers.
+    SELECT guest_id
+    INTO lv_test_guest_id
+    FROM guest
+    WHERE email = 'daniel.carter@example.com';
+
+    SELECT room_id
+    INTO lv_test_room_id
+    FROM room
+    WHERE room_number = '201';
+
 
     DBMS_OUTPUT.PUT_LINE('=== PAYMENT MANAGEMENT TESTS ===');
     DBMS_OUTPUT.PUT_LINE('');
@@ -80,7 +95,7 @@ BEGIN
     BEGIN
 
         reservation_management_pkg.create_reservation(
-            p_guest_id       => 1,
+            p_guest_id       => lv_test_guest_id,
             p_check_in_date  => DATE '2028-02-01',
             p_check_out_date => DATE '2028-02-03',
             p_total_guests   => 2,
@@ -89,7 +104,7 @@ BEGIN
 
         reservation_management_pkg.add_room_to_reservation(
             p_reservation_id => lv_reservation_id,
-            p_room_id        => 1,
+            p_room_id        => lv_test_room_id,
             p_nightly_rate   => 220,
             p_occupants      => 2
         );
@@ -145,7 +160,7 @@ BEGIN
     BEGIN
 
         reservation_management_pkg.create_reservation(
-            p_guest_id       => 1,
+            p_guest_id       => lv_test_guest_id,
             p_check_in_date  => DATE '2028-03-01',
             p_check_out_date => DATE '2028-03-03',
             p_total_guests   => 2,
@@ -154,7 +169,7 @@ BEGIN
 
         reservation_management_pkg.add_room_to_reservation(
             p_reservation_id => lv_reservation_id,
-            p_room_id        => 1,
+            p_room_id        => lv_test_room_id,
             p_nightly_rate   => 220,
             p_occupants      => 2
         );
@@ -214,7 +229,7 @@ BEGIN
     BEGIN
 
         reservation_management_pkg.create_reservation(
-            p_guest_id       => 1,
+            p_guest_id       => lv_test_guest_id,
             p_check_in_date  => DATE '2028-04-01',
             p_check_out_date => DATE '2028-04-03',
             p_total_guests   => 2,
@@ -223,7 +238,7 @@ BEGIN
 
         reservation_management_pkg.add_room_to_reservation(
             p_reservation_id => lv_reservation_id,
-            p_room_id        => 1,
+            p_room_id        => lv_test_room_id,
             p_nightly_rate   => 220,
             p_occupants      => 2
         );
@@ -280,7 +295,7 @@ BEGIN
     BEGIN
 
         reservation_management_pkg.create_reservation(
-            p_guest_id       => 1,
+            p_guest_id       => lv_test_guest_id,
             p_check_in_date  => DATE '2028-05-01',
             p_check_out_date => DATE '2028-05-03',
             p_total_guests   => 2,
@@ -289,7 +304,7 @@ BEGIN
 
         reservation_management_pkg.add_room_to_reservation(
             p_reservation_id => lv_reservation_id,
-            p_room_id        => 1,
+            p_room_id        => lv_test_room_id,
             p_nightly_rate   => 220,
             p_occupants      => 2
         );
@@ -367,7 +382,7 @@ BEGIN
     BEGIN
 
         reservation_management_pkg.create_reservation(
-            p_guest_id       => 1,
+            p_guest_id       => lv_test_guest_id,
             p_check_in_date  => DATE '2028-06-01',
             p_check_out_date => DATE '2028-06-03',
             p_total_guests   => 2,
@@ -376,7 +391,7 @@ BEGIN
 
         reservation_management_pkg.add_room_to_reservation(
             p_reservation_id => lv_reservation_id,
-            p_room_id        => 1,
+            p_room_id        => lv_test_room_id,
             p_nightly_rate   => 220,
             p_occupants      => 2
         );
@@ -443,7 +458,7 @@ BEGIN
     BEGIN
 
         reservation_management_pkg.create_reservation(
-            p_guest_id       => 1,
+            p_guest_id       => lv_test_guest_id,
             p_check_in_date  => DATE '2028-07-01',
             p_check_out_date => DATE '2028-07-03',
             p_total_guests   => 2,
@@ -452,7 +467,7 @@ BEGIN
 
         reservation_management_pkg.add_room_to_reservation(
             p_reservation_id => lv_reservation_id,
-            p_room_id        => 1,
+            p_room_id        => lv_test_room_id,
             p_nightly_rate   => 220,
             p_occupants      => 2
         );
@@ -515,7 +530,7 @@ BEGIN
     BEGIN
 
         reservation_management_pkg.create_reservation(
-            p_guest_id       => 1,
+            p_guest_id       => lv_test_guest_id,
             p_check_in_date  => DATE '2028-08-01',
             p_check_out_date => DATE '2028-08-03',
             p_total_guests   => 2,
@@ -524,7 +539,7 @@ BEGIN
 
         reservation_management_pkg.add_room_to_reservation(
             p_reservation_id => lv_reservation_id,
-            p_room_id        => 1,
+            p_room_id        => lv_test_room_id,
             p_nightly_rate   => 220,
             p_occupants      => 2
         );
