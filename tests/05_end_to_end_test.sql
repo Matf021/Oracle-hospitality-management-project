@@ -8,11 +8,57 @@ DECLARE
     lv_payment_id     NUMBER;
     lv_balance        NUMBER(10,2);
 
+    lv_test_guest_id          NUMBER;
+    lv_test_room_id           NUMBER;
+    lv_skyline_restaurant_id  NUMBER;
+    lv_skyline_table_id       NUMBER;
+    lv_old_fashioned_id       NUMBER;
+    lv_cheese_selection_id    NUMBER;
+
     lv_res_status     hotel_reservation.reservation_status%TYPE;
     lv_stay_status    stay.stay_status%TYPE;
     lv_folio_status   guest_folio.folio_status%TYPE;
 
 BEGIN
+
+    SELECT guest_id
+    INTO lv_test_guest_id
+    FROM guest
+    WHERE email = 'daniel.carter@example.com';
+
+    SELECT room_id
+    INTO lv_test_room_id
+    FROM room
+    WHERE room_number = '201';
+
+    SELECT restaurant_id
+    INTO lv_skyline_restaurant_id
+    FROM restaurant
+    WHERE restaurant_name = 'Skyline Bar';
+
+    SELECT table_id
+    INTO lv_skyline_table_id
+    FROM restaurant_table rt
+    JOIN restaurant r
+        ON r.restaurant_id = rt.restaurant_id
+    WHERE r.restaurant_name = 'Skyline Bar'
+      AND rt.table_number = 'S1';
+
+    SELECT menu_item_id
+    INTO lv_old_fashioned_id
+    FROM menu_item mi
+    JOIN restaurant r
+        ON r.restaurant_id = mi.restaurant_id
+    WHERE r.restaurant_name = 'Skyline Bar'
+      AND mi.item_name = 'Old Fashioned';
+
+    SELECT menu_item_id
+    INTO lv_cheese_selection_id
+    FROM menu_item mi
+    JOIN restaurant r
+        ON r.restaurant_id = mi.restaurant_id
+    WHERE r.restaurant_name = 'Skyline Bar'
+      AND mi.item_name = 'Cheese Selection';
 
     DBMS_OUTPUT.PUT_LINE('=== END-TO-END TEST START ===');
 
@@ -22,9 +68,9 @@ BEGIN
     -- =====================================================
 
     reservation_management_pkg.create_reservation(
-        p_guest_id       => 1,
-        p_check_in_date  => DATE '2026-10-10',
-        p_check_out_date => DATE '2026-10-13',
+        p_guest_id       => lv_test_guest_id,
+        p_check_in_date  => DATE '2030-10-10',
+        p_check_out_date => DATE '2030-10-13',
         p_total_guests   => 2,
         p_reservation_id => lv_reservation_id
     );
@@ -40,7 +86,7 @@ BEGIN
 
     reservation_management_pkg.add_room_to_reservation(
         p_reservation_id => lv_reservation_id,
-        p_room_id        => 1,
+        p_room_id        => lv_test_room_id,
         p_nightly_rate   => 220,
         p_occupants      => 2
     );
@@ -90,8 +136,8 @@ BEGIN
     -- =====================================================
 
     restaurant_order_management_pkg.create_order(
-        p_restaurant_id       => 3,
-        p_table_id            => 9,
+        p_restaurant_id       => lv_skyline_restaurant_id,
+        p_table_id            => lv_skyline_table_id,
         p_payment_destination => 'ROOM_CHARGE',
         p_folio_id            => lv_folio_id,
         p_order_id            => lv_order_id
@@ -108,13 +154,13 @@ BEGIN
 
     restaurant_order_management_pkg.add_order_item(
         p_order_id     => lv_order_id,
-        p_menu_item_id => 7,
+        p_menu_item_id => lv_old_fashioned_id,
         p_quantity     => 2
     );
 
     restaurant_order_management_pkg.add_order_item(
         p_order_id     => lv_order_id,
-        p_menu_item_id => 9,
+        p_menu_item_id => lv_cheese_selection_id,
         p_quantity     => 1
     );
 
@@ -267,7 +313,7 @@ BEGIN
     );
 
 
-    COMMIT;
+    ROLLBACK;
 
 
 EXCEPTION
